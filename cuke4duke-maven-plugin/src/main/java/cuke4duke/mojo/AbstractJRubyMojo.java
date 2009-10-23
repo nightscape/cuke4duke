@@ -1,5 +1,16 @@
 package cuke4duke.mojo;
 
+import java.io.File;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DependencyResolutionRequiredException;
 import org.apache.maven.artifact.repository.ArtifactRepository;
@@ -15,14 +26,6 @@ import org.apache.tools.ant.types.Commandline;
 import org.apache.tools.ant.types.Environment;
 import org.apache.tools.ant.types.Path;
 import org.codehaus.plexus.util.StringUtils;
-
-import java.io.File;
-import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
 
 /**
  * Base for all JRuby mojos.
@@ -98,6 +101,18 @@ public abstract class AbstractJRubyMojo extends AbstractMojo {
 		}
 	}
 
+	public static void addPath(String s) throws Exception {
+		File f = new File(s);
+		URL u = f.toURL();
+		URLClassLoader urlClassLoader = (URLClassLoader) ClassLoader
+				.getSystemClassLoader();
+		Class urlClass = URLClassLoader.class;
+		Method method = urlClass.getDeclaredMethod("addURL",
+				new Class[] { URL.class });
+		method.setAccessible(true);
+		method.invoke(urlClassLoader, new Object[] { u });
+	}
+
 	protected Java jruby(List<String> args) throws MojoExecutionException {
 		launchDirectory.mkdirs();
 		Project project;
@@ -117,7 +132,14 @@ public abstract class AbstractJRubyMojo extends AbstractMojo {
 		p.add((Path) project.getReference("maven.plugin.classpath"));
 		p.add((Path) project.getReference("maven.compile.classpath"));
 		p.add((Path) project.getReference("maven.test.classpath"));
-		System.out.println("Path:\n"+p.toString());
+		getLog().debug("Path:\n" + p.toString());
+
+		Environment.Variable gemPathVar = new Environment.Variable();
+		gemPathVar.setKey("GEM_PATH");
+		String gemPath = gemHome().getAbsolutePath();
+		gemPathVar.setValue(gemPath);
+		java.addEnv(gemPathVar);
+
 		if (shouldFork) {
 			java.setFork(true);
 			java.setDir(launchDirectory);
@@ -126,6 +148,7 @@ public abstract class AbstractJRubyMojo extends AbstractMojo {
 				arg = java.createJvmarg();
 				arg.setValue(jvmArg);
 			}
+			java.setClasspath(p);
 
 			Environment.Variable classpath = new Environment.Variable();
 
@@ -141,20 +164,21 @@ public abstract class AbstractJRubyMojo extends AbstractMojo {
 				System.setProperty(key, value);
 			}
 			try {
+				for (String path : p.list()) {
+					addPath(path);
+				}
 				setEnvironmentVariable("JRUBY_PARENT_CLASSPATH", p.toString());
+				setEnvironmentVariable("GEM_PATH", gemPath);
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
 
 		}
+		System.out.println("java.class.path: "
+				+ System.getProperty("java.class.path"));
 
-		System.out.println("Environment is: " + System.getenv());
-		System.out.println("Properties are: " + System.getProperties());
-
-		Environment.Variable gemPathVar = new Environment.Variable();
-		gemPathVar.setKey("GEM_PATH");
-		gemPathVar.setValue(gemHome().getAbsolutePath());
-		java.addEnv(gemPathVar);
+		getLog().debug("Environment is: " + System.getenv());
+		getLog().debug("Properties are: " + System.getProperties());
 
 		getLog().debug("java classpath: " + p.toString());
 
