@@ -17,9 +17,12 @@ import org.apache.tools.ant.types.Path;
 import org.codehaus.plexus.util.StringUtils;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Base for all JRuby mojos.
@@ -28,6 +31,9 @@ import java.util.List;
  */
 public abstract class AbstractJRubyMojo extends AbstractMojo {
 
+    /**
+     * @parameter
+     */
     protected boolean shouldFork = true;
 
     /**
@@ -74,7 +80,20 @@ public abstract class AbstractJRubyMojo extends AbstractMojo {
      * @readonly
      */
     protected ArtifactRepository localRepository;
-
+    @SuppressWarnings("unchecked")
+	public static void setEnvironmentVariable(String key, String value) throws Exception {
+        Class[] classes = Collections.class.getDeclaredClasses();
+        Map<String, String> env = System.getenv();
+        for(Class cl : classes) {
+            if("java.util.Collections$UnmodifiableMap".equals(cl.getName())) {
+                Field field = cl.getDeclaredField("m");
+                field.setAccessible(true);
+                Object obj = field.get(env);
+                Map<String, String> map = (Map<String, String>) obj;
+                map.put(key,value);
+            }
+        }
+    }
     protected Java jruby(List<String> args) throws MojoExecutionException {
         launchDirectory.mkdirs();
         Project project;
@@ -90,6 +109,10 @@ public abstract class AbstractJRubyMojo extends AbstractMojo {
         java.setFailonerror(true);
 
         Commandline.Argument arg;
+        Path p = new Path(java.getProject());
+        p.add((Path) project.getReference("maven.plugin.classpath"));
+        p.add((Path) project.getReference("maven.compile.classpath"));
+        p.add((Path) project.getReference("maven.test.classpath"));
 
         if (shouldFork) {
             java.setFork(true);
@@ -102,25 +125,34 @@ public abstract class AbstractJRubyMojo extends AbstractMojo {
 
             Environment.Variable classpath = new Environment.Variable();
 
-            Path p = new Path(java.getProject());
-            p.add((Path) project.getReference("maven.plugin.classpath"));
-            p.add((Path) project.getReference("maven.compile.classpath"));
-            p.add((Path) project.getReference("maven.test.classpath"));
+
             classpath.setKey("JRUBY_PARENT_CLASSPATH");
             classpath.setValue(p.toString());
 
             java.addEnv(classpath);
+        } else {
+          for (String jvmArg : getJvmArgs()) {
+            String[] keyAndValue = jvmArg.split("=");
+            System.setProperty(keyAndValue[0],keyAndValue[1]);
+          }
+          try {
+			setEnvironmentVariable("JRUBY_PARENT_CLASSPATH", p.toString());
+			setEnvironmentVariable("MOE", "was here");
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+          
         }
+        
+        System.out.println("Environment is: "+System.getenv());
+        System.out.println("Properties are: "+System.getProperties());
 
         Environment.Variable gemPathVar = new Environment.Variable();
         gemPathVar.setKey("GEM_PATH");
         gemPathVar.setValue(gemHome().getAbsolutePath());
         java.addEnv(gemPathVar);
 
-        Path p = java.createClasspath();
-        p.add((Path) project.getReference("maven.plugin.classpath"));
-        p.add((Path) project.getReference("maven.compile.classpath"));
-        p.add((Path) project.getReference("maven.test.classpath"));
+
         getLog().debug("java classpath: " + p.toString());
 
         for (String s : args) {
