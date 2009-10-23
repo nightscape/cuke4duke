@@ -133,7 +133,9 @@ public abstract class AbstractJRubyMojo extends AbstractMojo {
         } else {
           for (String jvmArg : getJvmArgs()) {
             String[] keyAndValue = jvmArg.split("=");
-            System.setProperty(keyAndValue[0],keyAndValue[1]);
+            String key = keyAndValue[0].replaceAll("-D", "");
+			String value = keyAndValue[1];
+			System.setProperty(key,value);
           }
           try {
 			setEnvironmentVariable("JRUBY_PARENT_CLASSPATH", p.toString());
