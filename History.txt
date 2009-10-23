@@ -6,6 +6,7 @@
 
 === Bugfixes
 * Made programming language dependencies optional (Aslak Hellesøy)
+* Fixed Guice problems regarding the instantiation of non-static inner & anonymous classes
 
 == 0.1.7 2009-10-15
 
